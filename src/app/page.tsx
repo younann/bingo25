@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import Footer from "./components/Footer";
 
 export default function Home() {
   return (
-    <div className="min-h-screen min-h-[100dvh] flex items-center justify-center p-4">
-      <div className="text-center">
+    <div className="min-h-screen min-h-[100dvh] flex flex-col items-center justify-center p-4">
+      <div className="text-center flex-1 flex flex-col justify-center">
         {/* Animated Title */}
         <div className="mb-8 md:mb-12 animate-slide-up">
           <h1 className="text-4xl sm:text-5xl md:text-7xl font-bold bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent mb-2 md:mb-4">
@@ -67,6 +68,7 @@ export default function Home() {
           Click a card to begin
         </p>
       </div>
+      <Footer />
     </div>
   );
 }

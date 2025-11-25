@@ -20,6 +20,7 @@ import {
 } from "@/lib/supabase/gameStore";
 import { themes, themeList, getTheme, CardTheme } from "@/lib/themes";
 import { RealtimeChannel } from "@supabase/supabase-js";
+import Footer from "../components/Footer";
 
 export default function PlayerCard() {
   const [cardState, setCardState] = useState<PlayerCardState | null>(null);
@@ -412,6 +413,8 @@ export default function PlayerCard() {
         <p className="text-center text-white/30 text-xs mt-3 sm:mt-4">
           Card: {cardState.cardId.slice(-8)}
         </p>
+
+        <Footer />
       </div>
 
       {/* Settings Modal */}

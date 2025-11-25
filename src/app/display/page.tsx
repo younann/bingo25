@@ -13,6 +13,7 @@ import {
 } from "@/lib/supabase/gameStore";
 import { RealtimeChannel } from "@supabase/supabase-js";
 import { QRCodeSVG } from "qrcode.react";
+import Footer from "../components/Footer";
 
 export default function DisplayScreen() {
   const [gameState, setGameState] = useState<GameState | null>(null);
@@ -354,6 +355,7 @@ export default function DisplayScreen() {
           <span>←</span>
           Back to Home
         </Link>
+        <Footer />
       </footer>
     </div>
   );

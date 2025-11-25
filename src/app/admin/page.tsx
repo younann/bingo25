@@ -28,6 +28,7 @@ import {
   clearWinner,
   getActivePlayerCount,
 } from "@/lib/supabase/gameStore";
+import Footer from "../components/Footer";
 
 type AdminStatus = "loading" | "login" | "active" | "blocked";
 
@@ -715,6 +716,7 @@ export default function AdminDashboard() {
             <span>←</span>
             Back to Home
           </Link>
+          <Footer />
         </footer>
       </div>
 
