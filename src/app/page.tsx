@@ -10,7 +10,7 @@ export default function Home() {
         {/* Animated Title */}
         <div className="mb-8 md:mb-12 animate-slide-up">
           <h1 className="text-4xl sm:text-5xl md:text-7xl font-bold bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent mb-2 md:mb-4">
-            BINGO 2025
+            BINGO GAME
           </h1>
           <p className="text-white/60 text-base md:text-lg">Select your role to continue</p>
         </div>

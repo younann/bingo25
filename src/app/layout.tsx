@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Bingo 2025",
+  title: "Bingo Game",
   description: "Modern animated Bingo game",
 };
 

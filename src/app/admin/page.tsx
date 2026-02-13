@@ -492,7 +492,7 @@ export default function AdminDashboard() {
         <header className="text-center mb-6 animate-slide-up">
           <Link href="/" className="inline-block">
             <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent mb-1">
-              BINGO 2025
+              BINGO GAME
             </h1>
           </Link>
           <div className="flex items-center justify-center gap-4">

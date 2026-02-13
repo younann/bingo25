@@ -1,4 +1,4 @@
--- Supabase Schema for Bingo 2025
+-- Supabase Schema for Bingo Game
 -- Run this in the Supabase SQL Editor to create the required tables
 
 -- Enable UUID extension

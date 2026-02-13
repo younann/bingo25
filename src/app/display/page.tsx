@@ -137,7 +137,7 @@ export default function DisplayScreen() {
       {/* Header */}
       <header className="text-center mb-4 md:mb-6 relative z-10">
         <h1 className="text-3xl md:text-5xl lg:text-6xl font-bold bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
-          BINGO 2025
+          BINGO GAME
         </h1>
         {/* Player Count */}
         <div className="mt-2 inline-flex items-center gap-2 bg-white/10 rounded-full px-4 py-1">
