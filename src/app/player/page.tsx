@@ -19,6 +19,7 @@ import {
   unsubscribe,
 } from "@/lib/supabase/gameStore";
 import { themes, themeList, getTheme, CardTheme } from "@/lib/themes";
+import { isSupabaseConfigured } from "@/lib/supabase/client";
 import { RealtimeChannel } from "@supabase/supabase-js";
 import Footer from "../components/Footer";
 
@@ -65,11 +66,14 @@ export default function PlayerCard() {
 
     init();
 
-    // Fallback polling for game state updates
-    const interval = setInterval(async () => {
-      const game = await getActiveGame();
-      setGameState(game);
-    }, 1000);
+    // Only poll when Supabase real-time is not available
+    let interval: NodeJS.Timeout | undefined;
+    if (!isSupabaseConfigured()) {
+      interval = setInterval(async () => {
+        const game = await getActiveGame();
+        setGameState(game);
+      }, 1000);
+    }
 
     // Update activity every 30 seconds
     const activityInterval = setInterval(() => {
@@ -79,7 +83,7 @@ export default function PlayerCard() {
     }, 30000);
 
     return () => {
-      clearInterval(interval);
+      if (interval) clearInterval(interval);
       clearInterval(activityInterval);
       unsubscribe(channel);
     };
@@ -101,7 +105,7 @@ export default function PlayerCard() {
   }, [cardState, gameState]);
 
   const handleCellClick = useCallback(
-    async (col: number, row: number) => {
+    (col: number, row: number) => {
       if (!cardState) return;
 
       // FREE space cannot be toggled
@@ -110,7 +114,7 @@ export default function PlayerCard() {
       const cellKey = `${col}-${row}`;
       setAnimatingCell(cellKey);
 
-      const newState = await updatePlayerCardMarks(cardState, col, row);
+      const newState = updatePlayerCardMarks(cardState, col, row);
       setCardState(newState);
 
       setTimeout(() => {

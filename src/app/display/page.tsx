@@ -11,6 +11,7 @@ import {
   subscribeToActiveGame,
   unsubscribe,
 } from "@/lib/supabase/gameStore";
+import { isSupabaseConfigured } from "@/lib/supabase/client";
 import { RealtimeChannel } from "@supabase/supabase-js";
 import { QRCodeSVG } from "qrcode.react";
 import Footer from "../components/Footer";
@@ -57,18 +58,21 @@ export default function DisplayScreen() {
 
     init();
 
-    // Fallback polling for localStorage mode (when Supabase not configured)
-    const interval = setInterval(async () => {
-      const newState = await getActiveGame();
-      setGameState((prev) => {
-        if (prev?.currentNumber !== newState.currentNumber && newState.currentNumber) {
-          setPreviousNumber(prev?.currentNumber || null);
-          setIsAnimating(true);
-          setTimeout(() => setIsAnimating(false), 2000);
-        }
-        return newState;
-      });
-    }, 500);
+    // Only poll when Supabase real-time is not available
+    let interval: NodeJS.Timeout | undefined;
+    if (!isSupabaseConfigured()) {
+      interval = setInterval(async () => {
+        const newState = await getActiveGame();
+        setGameState((prev) => {
+          if (prev?.currentNumber !== newState.currentNumber && newState.currentNumber) {
+            setPreviousNumber(prev?.currentNumber || null);
+            setIsAnimating(true);
+            setTimeout(() => setIsAnimating(false), 2000);
+          }
+          return newState;
+        });
+      }, 500);
+    }
 
     // Update player count every 30 seconds
     const playerCountInterval = setInterval(async () => {
@@ -77,7 +81,7 @@ export default function DisplayScreen() {
     }, 30000);
 
     return () => {
-      clearInterval(interval);
+      if (interval) clearInterval(interval);
       clearInterval(playerCountInterval);
       unsubscribe(channel);
     };

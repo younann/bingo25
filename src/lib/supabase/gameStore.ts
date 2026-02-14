@@ -556,11 +556,11 @@ export async function getPlayerCard(cardId?: string): Promise<PlayerCardState | 
   return localCard;
 }
 
-export async function updatePlayerCardMarks(
+export function updatePlayerCardMarks(
   cardState: PlayerCardState,
   col: number,
   row: number
-): Promise<PlayerCardState> {
+): PlayerCardState {
   if (col === 2 && row === 2) return cardState;
 
   const newMarkedCells = cardState.markedCells.map((column, c) =>
@@ -572,17 +572,22 @@ export async function updatePlayerCardMarks(
     markedCells: newMarkedCells,
   };
 
+  // Save to localStorage immediately (synchronous)
   savePlayerCardLocal(newState);
 
+  // Fire-and-forget Supabase update for instant UI response
   if (isSupabaseConfigured()) {
-    await supabase
+    supabase
       .from('player_cards')
       .update({
         marked_cells: newMarkedCells,
         last_active: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
-      .eq('id', cardState.cardId);
+      .eq('id', cardState.cardId)
+      .then(({ error }) => {
+        if (error) console.error('Error syncing marks:', error);
+      });
   }
 
   return newState;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import {
   GameState,
@@ -27,7 +27,10 @@ import {
   setWinner,
   clearWinner,
   getActivePlayerCount,
+  subscribeToActiveGame,
+  unsubscribe,
 } from "@/lib/supabase/gameStore";
+import { RealtimeChannel } from "@supabase/supabase-js";
 import Footer from "../components/Footer";
 
 type AdminStatus = "loading" | "login" | "active" | "blocked";
@@ -51,6 +54,13 @@ export default function AdminDashboard() {
   const [showAutoCallSettings, setShowAutoCallSettings] = useState(false);
   const [autoCallInterval, setAutoCallInterval] = useState(5);
   const [autoCallTimerRef, setAutoCallTimerRef] = useState<NodeJS.Timeout | null>(null);
+  const gameStateRef = useRef<GameState | null>(null);
+  const channelRef = useRef<RealtimeChannel | null>(null);
+
+  // Keep ref in sync with state so interval callbacks see latest
+  useEffect(() => {
+    gameStateRef.current = gameState;
+  }, [gameState]);
 
   // Check if already authenticated on mount
   useEffect(() => {
@@ -80,6 +90,14 @@ export default function AdminDashboard() {
       if (game.autoCallInterval) {
         setAutoCallInterval(game.autoCallInterval);
       }
+
+      // Subscribe to real-time updates so admin stays in sync with DB
+      if (channelRef.current) {
+        unsubscribe(channelRef.current);
+      }
+      channelRef.current = subscribeToActiveGame((newState) => {
+        setGameState(newState);
+      });
     } else {
       setAdminStatus("blocked");
       setExistingSession(result.existingSession || null);
@@ -104,6 +122,8 @@ export default function AdminDashboard() {
     // Clean up on unmount
     return () => {
       releaseAdminSession();
+      unsubscribe(channelRef.current);
+      channelRef.current = null;
     };
   }, [adminStatus]);
 
@@ -243,12 +263,15 @@ export default function AdminDashboard() {
     }
 
     const timer = setInterval(async () => {
-      if (gameState.calledNumbers.length < 75) {
-        const newState = await drawNumber(gameState);
+      const currentState = gameStateRef.current;
+      if (!currentState) return;
+      if (currentState.calledNumbers.length < 75) {
+        const newState = await drawNumber(currentState);
         setGameState(newState);
       } else {
         // All numbers called, stop auto-call
-        await handleStopAutoCall();
+        const stoppedState = await setAutoCall(currentState, false, currentState.autoCallInterval);
+        setGameState(stoppedState);
       }
     }, gameState.autoCallInterval * 1000);
 
@@ -620,6 +643,52 @@ export default function AdminDashboard() {
               {75 - gameState.calledNumbers.length}
             </p>
             <p className="text-white/60 text-xs">Remaining</p>
+          </div>
+        </section>
+
+        {/* Called Numbers Grid */}
+        <section className="mb-6">
+          <h2 className="text-sm font-semibold text-white/60 mb-3 text-center uppercase tracking-wider">
+            Called Numbers
+          </h2>
+          <div className="glass rounded-xl p-3">
+            {/* BINGO Letters Header */}
+            <div className="grid grid-cols-5 gap-1 mb-1">
+              {["B", "I", "N", "G", "O"].map((letter) => (
+                <div
+                  key={letter}
+                  className={`py-1 rounded bg-gradient-to-br ${getLetterColor(letter)} text-center font-bold text-sm text-white`}
+                >
+                  {letter}
+                </div>
+              ))}
+            </div>
+            {/* Numbers Grid - 15 rows x 5 columns */}
+            <div className="space-y-1">
+              {[...Array(15)].map((_, row) => (
+                <div key={row} className="grid grid-cols-5 gap-1">
+                  {[0, 1, 2, 3, 4].map((col) => {
+                    const num = col * 15 + row + 1;
+                    const isCalled = gameState.calledNumbers.includes(num);
+                    const isCurrentNumber = num === gameState.currentNumber;
+                    return (
+                      <div
+                        key={num}
+                        className={`h-7 rounded flex items-center justify-center text-xs font-semibold transition-all ${
+                          isCurrentNumber
+                            ? `bg-gradient-to-br ${getLetterColor(getBingoLetter(num))} text-white ring-1 ring-white`
+                            : isCalled
+                            ? `bg-gradient-to-br ${getLetterColor(getBingoLetter(num))} text-white`
+                            : "bg-white/5 text-white/30"
+                        }`}
+                      >
+                        {num}
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
           </div>
         </section>
 
