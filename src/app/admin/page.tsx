@@ -28,6 +28,8 @@ import {
   clearWinner,
   getActivePlayerCount,
   subscribeToActiveGame,
+  publishGameEvent,
+  cleanupGameEvents,
   unsubscribe,
 } from "@/lib/supabase/gameStore";
 import { RealtimeChannel } from "@supabase/supabase-js";
@@ -145,6 +147,14 @@ export default function AdminDashboard() {
     const newState = await drawNumber(gameState);
     setGameState(newState);
 
+    // Publish event for activity feed
+    if (newState.currentNumber) {
+      publishGameEvent(newState.gameId, 'number_called', null, {
+        number: newState.currentNumber,
+        letter: getBingoLetter(newState.currentNumber),
+      });
+    }
+
     setTimeout(() => {
       setAnimatingNumber(false);
     }, 600);
@@ -158,6 +168,7 @@ export default function AdminDashboard() {
 
   const handleNewGame = useCallback(async () => {
     if (!gameState || adminStatus !== "active") return;
+    cleanupGameEvents(gameState.gameId);
     const newState = await saveGameToHistory(gameState);
     setGameState(newState);
     const history = await loadGameHistory();
@@ -268,6 +279,12 @@ export default function AdminDashboard() {
       if (currentState.calledNumbers.length < 75) {
         const newState = await drawNumber(currentState);
         setGameState(newState);
+        if (newState.currentNumber) {
+          publishGameEvent(newState.gameId, 'number_called', null, {
+            number: newState.currentNumber,
+            letter: getBingoLetter(newState.currentNumber),
+          });
+        }
       } else {
         // All numbers called, stop auto-call
         const stoppedState = await setAutoCall(currentState, false, currentState.autoCallInterval);
@@ -289,6 +306,7 @@ export default function AdminDashboard() {
     const cardId = verificationResult.cardState?.cardId || "";
     const newState = await setWinner(gameState, cardId, playerName);
     setGameState(newState);
+    publishGameEvent(newState.gameId, 'bingo_claimed', playerName);
     setShowVerificationModal(false);
     setVerificationResult(null);
     setVerifyCardId("");

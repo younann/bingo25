@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import {
   PlayerCardState,
@@ -16,11 +16,13 @@ import {
   getBingoLetter,
   getLetterColor,
   subscribeToActiveGame,
+  publishGameEvent,
   unsubscribe,
 } from "@/lib/supabase/gameStore";
 import { themes, themeList, getTheme, CardTheme } from "@/lib/themes";
 import { isSupabaseConfigured } from "@/lib/supabase/client";
 import { RealtimeChannel } from "@supabase/supabase-js";
+import { playCellTap, playCellUntap, playBingoDetected, playNumberDrawn, playReactionSent, isMuted, toggleMute } from "@/lib/sounds";
 import Footer from "../components/Footer";
 
 export default function PlayerCard() {
@@ -36,10 +38,14 @@ export default function PlayerCard() {
   const [selectedTheme, setSelectedTheme] = useState("default");
   const [tempPlayerName, setTempPlayerName] = useState("");
   const [tempTheme, setTempTheme] = useState("default");
+  const [muted, setMuted] = useState(false);
+  const [reactionCooldown, setReactionCooldown] = useState(false);
+  const prevCalledCountRef = useRef(0);
 
   // Load state on mount and poll for game updates
   useEffect(() => {
     setMounted(true);
+    setMuted(isMuted());
     let channel: RealtimeChannel | null = null;
 
     const init = async () => {
@@ -96,11 +102,24 @@ export default function PlayerCard() {
     }
   }, [cardState?.cardId]);
 
+  // Play sound when a new number is drawn
+  useEffect(() => {
+    if (gameState && gameState.calledNumbers.length > prevCalledCountRef.current) {
+      playNumberDrawn();
+    }
+    prevCalledCountRef.current = gameState?.calledNumbers.length || 0;
+  }, [gameState?.calledNumbers.length]);
+
   // Check for bingo whenever card or game state changes
   useEffect(() => {
     if (cardState && gameState) {
       const result = checkBingo(cardState, gameState.calledNumbers);
+      const prevHadBingo = bingoResult?.hasBingo || false;
       setBingoResult(result);
+      // Play bingo sound when first detected
+      if (result.hasBingo && !prevHadBingo) {
+        playBingoDetected();
+      }
     }
   }, [cardState, gameState]);
 
@@ -110,6 +129,13 @@ export default function PlayerCard() {
 
       // FREE space cannot be toggled
       if (col === 2 && row === 2) return;
+
+      const isCurrentlyMarked = cardState.markedCells[col][row];
+      if (isCurrentlyMarked) {
+        playCellUntap();
+      } else {
+        playCellTap();
+      }
 
       const cellKey = `${col}-${row}`;
       setAnimatingCell(cellKey);
@@ -131,7 +157,11 @@ export default function PlayerCard() {
     setSelectedTheme(tempTheme);
     setShowBingoModal(false);
     setShowNewCardModal(false);
-  }, [tempPlayerName, tempTheme]);
+    // Publish join event
+    if (gameState) {
+      publishGameEvent(gameState.gameId, 'player_joined', tempPlayerName || null);
+    }
+  }, [tempPlayerName, tempTheme, gameState]);
 
   const handleCheckBingo = useCallback(() => {
     if (bingoResult?.hasBingo) {
@@ -153,6 +183,16 @@ export default function PlayerCard() {
     setSelectedTheme(tempTheme);
     setShowSettingsModal(false);
   }, [cardState, tempPlayerName, tempTheme]);
+
+  const REACTION_EMOJIS = ['🎉', '😮', '😂', '🔥', '😭', '👏'];
+
+  const handleReaction = useCallback((emoji: string) => {
+    if (reactionCooldown || !gameState) return;
+    playReactionSent();
+    publishGameEvent(gameState.gameId, 'reaction', playerName || null, { emoji });
+    setReactionCooldown(true);
+    setTimeout(() => setReactionCooldown(false), 3000);
+  }, [reactionCooldown, gameState, playerName]);
 
   const handleOpenNewCard = useCallback(() => {
     setTempPlayerName(playerName);
@@ -286,7 +326,14 @@ export default function PlayerCard() {
     <div className="min-h-screen min-h-[100dvh] p-3 sm:p-4 flex flex-col items-center justify-center">
       <div className="w-full max-w-[95vw] sm:max-w-md">
         {/* Header */}
-        <header className="text-center mb-4 sm:mb-6 animate-slide-up">
+        <header className="text-center mb-4 sm:mb-6 animate-slide-up relative">
+          <button
+            onClick={() => setMuted(toggleMute())}
+            className="absolute right-0 top-0 p-2 text-white/50 hover:text-white transition-all"
+            aria-label={muted ? "Unmute sounds" : "Mute sounds"}
+          >
+            <span className="text-lg">{muted ? "🔇" : "🔊"}</span>
+          </button>
           <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold bg-gradient-to-r from-cyan-400 via-teal-400 to-emerald-400 bg-clip-text text-transparent mb-1">
             BINGO
           </h1>
@@ -387,6 +434,22 @@ export default function PlayerCard() {
               })
             )}
           </div>
+        </div>
+
+        {/* Reaction Bar */}
+        <div className="flex justify-center gap-2 mb-3 sm:mb-4">
+          {REACTION_EMOJIS.map((emoji) => (
+            <button
+              key={emoji}
+              onClick={() => handleReaction(emoji)}
+              disabled={reactionCooldown}
+              className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-lg sm:text-xl transition-all active:scale-90 ${
+                reactionCooldown ? 'opacity-40 cursor-not-allowed' : ''
+              }`}
+            >
+              {emoji}
+            </button>
+          ))}
         </div>
 
         {/* Controls */}

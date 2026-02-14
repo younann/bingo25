@@ -69,8 +69,27 @@ CREATE POLICY "Allow all operations on player_cards" ON player_cards
 CREATE POLICY "Allow all operations on admin_sessions" ON admin_sessions
   FOR ALL USING (true) WITH CHECK (true);
 
--- Enable realtime for games table (for live updates)
+-- Game events table (activity feed + reactions)
+CREATE TABLE IF NOT EXISTS game_events (
+  id BIGSERIAL PRIMARY KEY,
+  game_id TEXT REFERENCES games(id) ON DELETE CASCADE,
+  event_type TEXT NOT NULL, -- 'number_called', 'player_joined', 'reaction', 'bingo_claimed'
+  player_name TEXT,
+  data JSONB DEFAULT '{}',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_game_events_game_id ON game_events(game_id);
+CREATE INDEX IF NOT EXISTS idx_game_events_created_at ON game_events(created_at DESC);
+
+-- Game events policies
+ALTER TABLE game_events ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow all operations on game_events" ON game_events
+  FOR ALL USING (true) WITH CHECK (true);
+
+-- Enable realtime for games and game_events tables
 ALTER PUBLICATION supabase_realtime ADD TABLE games;
+ALTER PUBLICATION supabase_realtime ADD TABLE game_events;
 
 -- Function to auto-update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()

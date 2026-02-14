@@ -1,18 +1,22 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import {
   GameState,
+  GameEvent,
   getActiveGame,
   getBingoLetter,
   getLetterColor,
   getActivePlayerCount,
   subscribeToActiveGame,
+  subscribeToGameEvents,
+  getRecentEvents,
   unsubscribe,
 } from "@/lib/supabase/gameStore";
 import { isSupabaseConfigured } from "@/lib/supabase/client";
 import { RealtimeChannel } from "@supabase/supabase-js";
+import { playDisplayChime, playWinnerCelebration, isMuted, toggleMute } from "@/lib/sounds";
 import { QRCodeSVG } from "qrcode.react";
 import Footer from "../components/Footer";
 
@@ -24,11 +28,32 @@ export default function DisplayScreen() {
   const [previousNumber, setPreviousNumber] = useState<number | null>(null);
   const [isAnimating, setIsAnimating] = useState(false);
   const [playerUrl, setPlayerUrl] = useState("");
+  const [muted, setMuted] = useState(false);
+  const [activityFeed, setActivityFeed] = useState<GameEvent[]>([]);
+  const [floatingReactions, setFloatingReactions] = useState<{ id: number; emoji: string; x: number }[]>([]);
+  const reactionIdRef = useRef(0);
+
+  // Handle incoming game event (add to feed, spawn floating reaction)
+  const handleGameEvent = useCallback((event: GameEvent) => {
+    setActivityFeed((prev) => [event, ...prev].slice(0, 30));
+
+    if (event.eventType === 'reaction' && event.data?.emoji) {
+      const id = reactionIdRef.current++;
+      const x = 10 + Math.random() * 80; // random horizontal position (10-90%)
+      setFloatingReactions((prev) => [...prev, { id, emoji: event.data.emoji as string, x }]);
+      // Remove after animation
+      setTimeout(() => {
+        setFloatingReactions((prev) => prev.filter((r) => r.id !== id));
+      }, 3000);
+    }
+  }, []);
 
   // Load state on mount and subscribe to real-time updates
   useEffect(() => {
     setMounted(true);
+    setMuted(isMuted());
     let channel: RealtimeChannel | null = null;
+    let eventsChannel: RealtimeChannel | null = null;
 
     // Set player URL
     if (typeof window !== "undefined") {
@@ -43,17 +68,29 @@ export default function DisplayScreen() {
       const count = await getActivePlayerCount();
       setPlayerCount(count);
 
+      // Load recent events
+      const events = await getRecentEvents(game.gameId, 20);
+      setActivityFeed(events);
+
       // Subscribe to real-time updates
       channel = subscribeToActiveGame((newState) => {
         setGameState((prev) => {
           if (prev?.currentNumber !== newState.currentNumber && newState.currentNumber) {
             setPreviousNumber(prev?.currentNumber || null);
             setIsAnimating(true);
+            playDisplayChime();
             setTimeout(() => setIsAnimating(false), 2000);
+          }
+          // Play celebration when winner is announced
+          if (!prev?.winnerName && newState.winnerName) {
+            playWinnerCelebration();
           }
           return newState;
         });
       });
+
+      // Subscribe to game events
+      eventsChannel = subscribeToGameEvents(game.gameId, handleGameEvent);
     };
 
     init();
@@ -84,8 +121,9 @@ export default function DisplayScreen() {
       if (interval) clearInterval(interval);
       clearInterval(playerCountInterval);
       unsubscribe(channel);
+      unsubscribe(eventsChannel);
     };
-  }, []);
+  }, [handleGameEvent]);
 
   if (!mounted || !gameState) {
     return (
@@ -140,9 +178,18 @@ export default function DisplayScreen() {
 
       {/* Header */}
       <header className="text-center mb-4 md:mb-6 relative z-10">
-        <h1 className="text-3xl md:text-5xl lg:text-6xl font-bold bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
-          BINGO GAME
-        </h1>
+        <div className="relative">
+          <button
+            onClick={() => setMuted(toggleMute())}
+            className="absolute right-0 top-0 p-2 text-white/50 hover:text-white transition-all"
+            aria-label={muted ? "Unmute sounds" : "Mute sounds"}
+          >
+            <span className="text-xl">{muted ? "🔇" : "🔊"}</span>
+          </button>
+          <h1 className="text-3xl md:text-5xl lg:text-6xl font-bold bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+            BINGO GAME
+          </h1>
+        </div>
         {/* Player Count */}
         <div className="mt-2 inline-flex items-center gap-2 bg-white/10 rounded-full px-4 py-1">
           <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
@@ -294,9 +341,9 @@ export default function DisplayScreen() {
           )}
         </div>
 
-        {/* Right Side - Numbers Board */}
-        <div className="lg:flex-1">
-          <div className="glass rounded-2xl p-3 md:p-4 h-full">
+        {/* Right Side - Numbers Board + Activity Feed */}
+        <div className="lg:flex-1 flex flex-col gap-4 md:gap-6">
+          <div className="glass rounded-2xl p-3 md:p-4 flex-1">
             <h2 className="text-lg md:text-xl font-semibold text-white/80 mb-3 md:mb-4 text-center">
               All Numbers
             </h2>
@@ -347,7 +394,55 @@ export default function DisplayScreen() {
               ))}
             </div>
           </div>
+
+          {/* Activity Feed */}
+          {activityFeed.length > 0 && (
+            <div className="glass rounded-2xl p-3 md:p-4 max-h-40 overflow-hidden">
+              <h2 className="text-sm font-semibold text-white/60 mb-2 uppercase tracking-wider">
+                Live Feed
+              </h2>
+              <div className="space-y-1 overflow-y-auto max-h-28">
+                {activityFeed.slice(0, 10).map((event, i) => (
+                  <div
+                    key={event.id || i}
+                    className={`text-sm text-white/70 flex items-center gap-2 ${i === 0 ? 'animate-slide-up' : ''}`}
+                  >
+                    <span className="text-xs">
+                      {event.eventType === 'reaction' ? (event.data?.emoji as string || '') :
+                       event.eventType === 'player_joined' ? '👋' :
+                       event.eventType === 'number_called' ? '🔢' :
+                       event.eventType === 'bingo_claimed' ? '🎉' : ''}
+                    </span>
+                    <span>
+                      {event.eventType === 'reaction'
+                        ? `${event.playerName || 'Someone'} reacted ${event.data?.emoji || ''}`
+                        : event.eventType === 'player_joined'
+                        ? `${event.playerName || 'A player'} joined`
+                        : event.eventType === 'number_called'
+                        ? `${event.data?.letter || ''}${event.data?.number || ''} was called`
+                        : event.eventType === 'bingo_claimed'
+                        ? `${event.playerName || 'Someone'} claimed BINGO!`
+                        : ''}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
+      </div>
+
+      {/* Floating Reactions Overlay */}
+      <div className="fixed inset-0 pointer-events-none z-30 overflow-hidden">
+        {floatingReactions.map((reaction) => (
+          <div
+            key={reaction.id}
+            className="absolute bottom-0 animate-float-up"
+            style={{ left: `${reaction.x}%` }}
+          >
+            <span className="text-4xl md:text-5xl">{reaction.emoji}</span>
+          </div>
+        ))}
       </div>
 
       {/* Footer */}

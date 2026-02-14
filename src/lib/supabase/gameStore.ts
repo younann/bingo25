@@ -785,6 +785,104 @@ export function checkBingo(cardState: PlayerCardState, calledNumbers: number[]):
 }
 
 // ============================================
+// Game Events (Activity Feed + Reactions)
+// ============================================
+
+export interface GameEvent {
+  id?: number;
+  gameId: string;
+  eventType: 'number_called' | 'player_joined' | 'reaction' | 'bingo_claimed';
+  playerName: string | null;
+  data: Record<string, unknown>;
+  createdAt: string;
+}
+
+export async function publishGameEvent(
+  gameId: string,
+  eventType: GameEvent['eventType'],
+  playerName: string | null = null,
+  data: Record<string, unknown> = {}
+): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+
+  supabase
+    .from('game_events')
+    .insert({
+      game_id: gameId,
+      event_type: eventType,
+      player_name: playerName,
+      data,
+    })
+    .then(({ error }) => {
+      if (error) console.error('Error publishing event:', error);
+    });
+}
+
+export async function getRecentEvents(gameId: string, limit: number = 20): Promise<GameEvent[]> {
+  if (!isSupabaseConfigured()) return [];
+
+  const { data, error } = await supabase
+    .from('game_events')
+    .select('*')
+    .eq('game_id', gameId)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (error || !data) return [];
+
+  return data.map((e: { id: number; game_id: string; event_type: string; player_name: string | null; data: Record<string, unknown>; created_at: string }) => ({
+    id: e.id,
+    gameId: e.game_id,
+    eventType: e.event_type as GameEvent['eventType'],
+    playerName: e.player_name,
+    data: e.data || {},
+    createdAt: e.created_at,
+  }));
+}
+
+export function subscribeToGameEvents(
+  gameId: string,
+  onEvent: (event: GameEvent) => void
+): RealtimeChannel | null {
+  if (!isSupabaseConfigured()) return null;
+
+  const channel = supabase
+    .channel(`game-events:${gameId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'game_events',
+        filter: `game_id=eq.${gameId}`,
+      },
+      (payload) => {
+        const e = payload.new as { id: number; game_id: string; event_type: string; player_name: string | null; data: Record<string, unknown>; created_at: string };
+        onEvent({
+          id: e.id,
+          gameId: e.game_id,
+          eventType: e.event_type as GameEvent['eventType'],
+          playerName: e.player_name,
+          data: e.data || {},
+          createdAt: e.created_at,
+        });
+      }
+    )
+    .subscribe();
+
+  return channel;
+}
+
+export async function cleanupGameEvents(gameId: string): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+
+  await supabase
+    .from('game_events')
+    .delete()
+    .eq('game_id', gameId);
+}
+
+// ============================================
 // Real-time Subscriptions
 // ============================================
 
